@@ -5,7 +5,7 @@
 # ============================================
 # This script:
 # 1. Loads the processed phenotypic dataset produced in Script 01
-# 2. Defines relevant year groups (1980–1981, 2021–2023, 2025)
+# 2. Defines relevant year groups, combines 2021–2023 and 2025 data
 # 3. Identifies numeric phenotypic traits
 # 4. Produces exploratory plots of traits grouped by lake and year
 
@@ -18,11 +18,24 @@ stickleback_all <- read_csv(
 stickleback_all <- stickleback_all |> 
   filter(!is.na(lake))
 
+# Combine contemporary sampling years and removes lakes with insufficient data
+stickleback_analysis <- stickleback_all |>
+ 
+   # Remove Sutherland due to small sample size
+  filter(lake != "Sutherland") |>
+  
+  # Combine sampling years into a contemporary group
+  mutate(
+    year_group = case_when(
+      year%in% c(2021, 2022, 2023, 2025) ~ "Contemporary (2021-2023, 2025)",
+      TRUE ~ "Historic (1980-1981)"
+    )
+  )
+  
 # Plot palette
 pastel_palette <- c(
-  "1980–1981" = "#B3CDE3",  # soft blue
-  "2021–2023" = "#CCEBC5",  # soft green
-  "2025"      = "#DECBE4"   # soft purple
+  "Historic (1980-1981)" = "#B3CDE3",  # soft blue
+  "Contemporary (2021-2023, 2025)" = "#CCEBC5"  # soft green
 )
 
 # Define numeric traits
@@ -32,7 +45,7 @@ outlier_traits <- c(
   "dorsal_2", "pspine_r", "pspine_l"
 )
 
-stickleback_long <- stickleback_all |>
+stickleback_long <- stickleback_analysis |>
   pivot_longer(
     cols = all_of(outlier_traits),
     names_to = "trait",
@@ -70,20 +83,6 @@ outlier_summary <- outlier_table |>
 
 View(outlier_summary)
 
-# Create a clean year group variable
-stickleback_all <- stickleback_all |> 
-  mutate(
-    year_group = case_when(
-      year %in% c(1980, 1981) ~ "1980–1981",
-      year >= 2021 & year <= 2023 ~ "2021–2023",
-      year == 2025 ~ "2025",
-      TRUE ~ NA_character_
-    )
-  )
-
-# Sanity check:
-count(stickleback_all, year_group)
-
 # Define numeric traits
 traits <- c(
   "sl", "body_depth", "ap_length", "ap_width", 
@@ -92,7 +91,7 @@ traits <- c(
 )
 
 # Reshape data for easy plotting
-stickleback_long <- stickleback_all |> 
+stickleback_long <- stickleback_analysis |> 
   pivot_longer(
     cols = all_of(traits),
     names_to = "trait",
@@ -101,7 +100,7 @@ stickleback_long <- stickleback_all |>
 
 # Boxplots of each lake per trait (e.g. jaw length) separated by year group
 ggplot(
-  stickleback_all,
+  stickleback_analysis,
   aes(x = lake, y = jaw_length, fill = year_group)
 ) +
   geom_boxplot(outlier.shape = NA, colour = "grey30") +
@@ -139,7 +138,7 @@ traits_no_sl <- c(
 )
 
 ggplot(
-  stickleback_all,
+  stickleback_analysis,
   aes(x = sl, y = body_depth, colour = year_group)
 ) +
   geom_point(alpha = 0.6, size = 1.5) +
@@ -156,8 +155,13 @@ ggplot(
 
 # Scatter plot for all lakes on one graph, faceted by year group
 # (e.g. body depth)
+stickleback_analysis$year_group <- factor(
+  stickleback_analysis$year_group,
+  levels = c("Historic (1980-1981)", "Contemporary (2021-2023, 2025)")
+)
+
 ggplot(
-  stickleback_all,
+  stickleback_analysis,
   aes(x = sl, y = body_depth, colour = lake)
 ) +
   geom_point(alpha = 0.6, size = 1.5) +
@@ -177,8 +181,13 @@ ggplot(
 
 # Scatter plot for pelvic spine length vs. standard length
 # (excluding N/A values aka stickleback without pelvic spine)
+stickleback_analysis$year_group <- factor(
+  stickleback_analysis$year_group,
+  levels = c("Historic (1980-1981)", "Contemporary (2021-2023, 2025)")
+)
+
 ggplot(
-  stickleback_all |> 
+  stickleback_analysis |> 
     filter(
       !is.na(pspine_l),
       pspine_l > 0
@@ -201,8 +210,13 @@ ggplot(
   )
 
 # Proportional stacked bar plots for plate morph frequencies
+stickleback_analysis$year_group <- factor(
+  stickleback_analysis$year_group,
+  levels = c("Historic (1980-1981)", "Contemporary (2021-2023, 2025)")
+)
+
 ggplot(
-  stickleback_all |>
+  stickleback_analysis |>
     filter(
       !is.na(plate_l),
       !is.na(year_group),
@@ -229,4 +243,9 @@ ggplot(
   )
 
 # End of Script 02
-# No data values are altered in this script.
+# NOTE:
+# Sampling years 2021–2023 and 2025 were combined into a single
+# "Contemporary" sampling group because they represent the modern
+# sampling period of this study.
+# Sutherland was excluded from analyses due to insufficient
+# sample size to allow reliable statistical comparisons.
