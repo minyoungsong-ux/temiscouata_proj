@@ -1,127 +1,92 @@
 # ============================================
-# Temiscouata Project – Foraging Traits (Gill Rakers)
+# Temiscouata Project – Allometric Size Adjustments
 # MSc Thesis
 # Author: Sarah Minyoung Song
 # ============================================
-# This script:
-# 1. Imports raw measurements from CSV files
-# 2. Cleans and converts gill raker measurements for analysis
-# 3. Produces exploratory plots of gill raker traits grouped by lake and year
-
 library(tidyverse)
 
-gill_2123 <- read_csv("data/gill raker data_2021-2023.csv")
-gill_2025 <- read_csv("data/gill raker data_2025.csv")
+# ALTERNATIVE CODE TO INCLUDE CMN STICKLEBACK WITH N/As, STILL MISSING SOME
+# CONTEMPORARY FISH WITH HALF BODIES
+# data.log <- stickleback_analysis |>
+#  filter(sl > 0) |>
+#  mutate(across(c(sl, body_depth, ap_length, ap_width, jaw_length,
+#                  ppl, ppw, dorsal_1, dorsal_2, pspine_r, pspine_l),
+#                ~ log10(.)))
 
-gill_raw <- bind_rows(gill_2123, gill_2025)
+data.log <- stickleback_analysis |>
+  filter(across(c(sl, body_depth, ap_length, ap_width, jaw_length,
+                  ppl, ppw, dorsal_1, dorsal_2, pspine_r, pspine_l),
+                ~ . > 0)) |>
+  mutate_at(vars(sl, body_depth, ap_length, ap_width, jaw_length, ppl, ppw, dorsal_1,
+                 dorsal_2, pspine_r, pspine_l),
+            log10)
 
-# Convert pixel measurements to mm
-gill_raw <- gill_raw |>
-  mutate(
-    conversion_factor = 1 / ruler_pixels
-  )
+# size.coef is a function to get coefficient for #size adjustment 
+# trait - name of trait col to get #slope coefficient
+# altered code to account for NA and INF values
+size.coef<-function(traits){
+  ancova <- lm(traits ~ sl + lake, data=data.log, na.action = na.omit)
+  coef <- ancova$coefficients[2]
+  coef
+}
 
-# Convert lengths and widths to mm -> average replicates
-gill_raw <- gill_raw |>
-  mutate(
-    length_3_mm = length_3 * conversion_factor,
-    length_4_mm = length_4 * conversion_factor,
-    length_5_mm = length_5 * conversion_factor,
-    width_1_mm  = width_1  * conversion_factor,
-    width_2_mm  = width_2  * conversion_factor,
-    width_3_mm  = width_3  * conversion_factor
-  )
+data.log <- data.log |>
+  mutate(across(c(sl, body_depth, ap_length, ap_width, jaw_length,
+                  ppl, ppw, dorsal_1, dorsal_2, pspine_r, pspine_l),
+                ~ ifelse(is.finite(.), ., NA)))
 
-gill_final <- gill_raw |>
-  rowwise() |>
-  mutate(
-    mean_length_mm = mean(c_across(c(length_3_mm, length_4_mm, length_5_mm)), na.rm = TRUE),
-    mean_width_mm  = mean(c_across(c(width_1_mm, width_2_mm, width_3_mm)), na.rm = TRUE)
-  ) |>
-  ungroup()
+# The following line produces slope coefficient. Repeat for each trait.
+BD.coef<-size.coef(data.log$body_depth)
+APL.coef<-size.coef(data.log$ap_length)
+APW.coef<-size.coef(data.log$ap_width)
+JL.coef<-size.coef(data.log$jaw_length)
+PPL.coef<-size.coef(data.log$ppl)
+PPW.coef<-size.coef(data.log$ppw)
+D1.coef<-size.coef(data.log$dorsal_1)
+D2.coef<-size.coef(data.log$dorsal_2)
+PSR.coef<-size.coef(data.log$pspine_r)
+PSL.coef<-size.coef(data.log$pspine_l)
 
-# Clean final dataset -> save clean version
-gill_final <- gill_final |> 
-  mutate(
-    year_group = case_when(
-      year >= 2021 & year <= 2023 ~ "2021–2023",
-      year == 2025 ~ "2025",
-      TRUE ~ NA_character_
-    )
-  )
+# Following makes a motrix 1 x k matrix of slopes for each trait
+Coef<-matrix(c(BD.coef, APL.coef, APW.coef,JL.coef, PPL.coef, PPW.coef, D1.coef, D2.coef, PSR.coef, PSL.coef),dimnames = list(c("body_depth", "ap_length", "ap_width", "jaw_length", "ppl", "ppw", "dorsal_1", "dorsal_2", "pspine_r", "pspine_l")))
 
-gill_final <- gill_final |>
-  select(
-    lake,
-    year,
-    year_group,
-    SL,
-    count,
-    mean_length_mm,
-    mean_width_mm
-  ) |>
-  filter(
-    !is.na(mean_length_mm),
-    !is.na(count)
-  )
+# Adjusts trait value using formula: Xadj=Xi*(mean(SL)/SLi)^b
+stickleback_analysis$body_depth.adj<-stickleback_analysis$body_depth*(mean(stickleback_analysis$sl)/stickleback_analysis$sl)^Coef["body_depth",]
+stickleback_analysis$ap_length.adj<-stickleback_analysis$ap_length*(mean(stickleback_analysis$sl)/stickleback_analysis$sl)^Coef["ap_length",]
+stickleback_analysis$ap_width.adj<-stickleback_analysis$ap_width*(mean(stickleback_analysis$sl)/stickleback_analysis$sl)^Coef["ap_width",]
+stickleback_analysis$jaw_length.adj<-stickleback_analysis$jaw_length*(mean(stickleback_analysis$sl)/stickleback_analysis$sl)^Coef["jaw_length",]
+stickleback_analysis$ppl.adj<-stickleback_analysis$ppl*(mean(stickleback_analysis$sl)/stickleback_analysis$sl)^Coef["ppl",]
+stickleback_analysis$ppw.adj<-stickleback_analysis$ppw*(mean(stickleback_analysis$sl)/stickleback_analysis$sl)^Coef["ppw",]
+stickleback_analysis$dorsal_1.adj<-stickleback_analysis$dorsal_1*(mean(stickleback_analysis$sl)/stickleback_analysis$sl)^Coef["dorsal_1",]
+stickleback_analysis$dorsal_2.adj<-stickleback_analysis$dorsal_2*(mean(stickleback_analysis$sl)/stickleback_analysis$sl)^Coef["dorsal_2",]
+stickleback_analysis$pspine_r.adj<-stickleback_analysis$pspine_r*(mean(stickleback_analysis$sl)/stickleback_analysis$sl)^Coef["pspine_r",]
+stickleback_analysis$pspine_l.adj<-stickleback_analysis$pspine_l*(mean(stickleback_analysis$sl)/stickleback_analysis$sl)^Coef["pspine_l",]
 
-write_csv(gill_final, "data/gill_raker_cleaned.csv")
+# Allometric size adjustments for gill rakers?
+raker.log <- gill_spatial |>
+  mutate_at(vars(SL, mean_length_mm, mean_width_mm),
+            log10)
 
-# Scatter plot for gill raker length vs. standard length by lake
-ggplot(
-  gill_final |> 
-    filter(
-      !is.na(mean_length_mm),
-      !is.na(SL),
-      mean_length_mm > 0
-    ),
-  aes(x = SL, y = mean_length_mm, colour = lake)
-) +
-  geom_point(alpha = 0.6, size = 1.5) +
-  geom_smooth(method = "lm", se = FALSE) +
-  facet_wrap(~ year_group) +
-  scale_colour_brewer(palette = "Paired") +
-  theme_bw() +
-  labs(
-    x = "Standard length (mm)",
-    y = "Mean gill raker length (mm)",
-    colour = "Lake",
-    title = "Gill raker length vs SL across lakes and years"
-  )
+size.coef<-function(traits){
+  ancova=lm(data=raker.log, traits~SL+lake)
+  coef=ancova$coefficients[2]
+  coef
+}
 
-# Scatter plot for gill raker gap width vs. standard length by lake
-ggplot(
-  gill_final |> 
-    filter(
-      !is.na(mean_width_mm),
-      !is.na(SL),
-      mean_width_mm > 0
-    ),
-  aes(x = SL, y = mean_width_mm, colour = lake)
-) +
-  geom_point(alpha = 0.6, size = 1.5) +
-  geom_smooth(method = "lm", se = FALSE) +
-  facet_wrap(~ year_group) +
-  scale_colour_brewer(palette = "Paired") +
-  theme_bw() +
-  labs(
-    x = "Standard length (mm)",
-    y = "Mean gill raker gap width (mm)",
-    colour = "Lake",
-    title = "Gill raker gap width vs SL across lakes and years"
-  )
+rakerlength.coef<-size.coef(raker.log$mean_length_mm)
+rakerwidth.coef<-size.coef(raker.log$mean_width_mm)
 
-# Box plots for gill raker number by lake and year group
-ggplot(gill_final, aes(x = lake, y = count, fill = year_group)) +
-  geom_boxplot(position = position_dodge(width = 0.8)) +
-  scale_fill_brewer(palette = "Paired") +
-  theme_bw() +
-  labs(
-    title = "Gill raker number by lake and year group",
-    x = "Lake",
-    y = "Gill raker count",
-    fill = "Year group"
-  ) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1)
-  )
+Coef<-matrix(c(rakerlength.coef, rakerwidth.coef),dimnames = list(c("mean_length_mm", "mean_width_mm")))
+
+gill_spatial$mean_length_mm.adj<-gill_spatial$mean_length_mm*(mean(gill_spatial$SL)/gill_spatial$SL)^Coef["mean_length_mm",]
+gill_spatial$mean_width_mm.adj<-gill_spatial$mean_width_mm*(mean(gill_spatial$SL)/gill_spatial$SL)^Coef["mean_width_mm",]
+
+# PLOTS AFTER ALLOMETRIC SIZE ADJUSTMENTS:
+# PCA?
+pca_data <- data.log[, c("lake","year", traits)]
+
+# remove NA
+pca_data <- pca_data[complete.cases(pca_data), ]
+
+# remove Inf
+pca_data <- pca_data[!apply(pca_data[,traits],1,function(x) any(is.infinite(x))), ]
